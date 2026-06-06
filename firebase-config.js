@@ -11,6 +11,10 @@ window.RANKING_FIREBASE_CONFIG = {
   appId: "YOUR_APP_ID"
 };
 
+// Keep this true for GitHub Pages sharing. If this is true and Firebase is not
+// configured, the admin page will refuse to save instead of saving per-device.
+window.RANKING_REQUIRE_REMOTE_STORAGE = true;
+
 // Keep this value the same on every uploaded copy of the site. Changing it
 // creates a separate shared data space.
 window.RANKING_FIREBASE_PATH_PREFIX = "ranking-100";

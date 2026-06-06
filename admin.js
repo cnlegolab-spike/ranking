@@ -90,11 +90,12 @@ function ensureStorageStatusElement() {
 
 function renderStorageStatus(status = getRemoteStatus()) {
   if (!els.storageStatus) return;
+  document.body.classList.toggle("storage-unavailable", remoteStorageRequired() && (!status.enabled || Boolean(status.error)));
   els.storageStatus.classList.toggle("is-connected", status.enabled && status.connected && !status.error);
   els.storageStatus.classList.toggle("is-error", Boolean(status.error));
 
   if (status.error) {
-    els.storageStatus.textContent = "Cloud error";
+    els.storageStatus.textContent = status.enabled ? "Cloud error" : "Cloud setup required";
     els.storageStatus.title = status.error;
     return;
   }
@@ -137,6 +138,7 @@ function renderRoundButtons() {
     button.className = `round-btn ${round === state.selectedRound ? "active" : ""}`;
     button.textContent = `${round}R`;
     button.addEventListener("click", () => {
+      if (!canWriteSharedState("change round")) return;
       state.selectedRound = round;
       state.view = "round";
       saveState(state);
@@ -252,6 +254,7 @@ function exportCsv() {
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
+    if (!canWriteSharedState("change view")) return;
     state.view = tab.dataset.view;
     saveState(state);
     render();
@@ -259,6 +262,11 @@ document.querySelectorAll(".tab").forEach((tab) => {
 });
 
 els.tableBody.addEventListener("input", (event) => {
+  if (!canWriteSharedState("save score")) {
+    render();
+    return;
+  }
+
   const scoreInput = event.target.closest("input[data-score-player-id]");
   const nameInput = event.target.closest("input[data-name-player-id]");
   const playerId = Number(scoreInput?.dataset.scorePlayerId || nameInput?.dataset.namePlayerId);
@@ -279,6 +287,11 @@ els.tableBody.addEventListener("input", (event) => {
 });
 
 els.tableBody.addEventListener("change", (event) => {
+  if (!canWriteSharedState("save score")) {
+    render();
+    return;
+  }
+
   const scoreInput = event.target.closest("input[data-score-player-id]");
   if (scoreInput && scoreInput.value !== "") {
     scoreInput.value = Number(scoreInput.value).toFixed(1);
@@ -296,6 +309,7 @@ els.searchInput.addEventListener("input", renderTable);
 els.sortMode.addEventListener("change", renderTable);
 
 els.clearRound.addEventListener("click", () => {
+  if (!canWriteSharedState("clear round")) return;
   if (!confirm(`${currentGroup.label} ${state.selectedRound}라운드 점수를 모두 비울까요?`)) return;
   visiblePlayers(state).forEach((player) => {
     player.scores[state.selectedRound - 1] = "";
@@ -311,6 +325,7 @@ els.nameFocus.addEventListener("click", () => {
 });
 
 els.nameSave.addEventListener("click", () => {
+  if (!canWriteSharedState("save name")) return;
   const player = state.players.find((item) => item.id === Number(els.playerSelect.value));
   if (!player) return;
   player.name = els.nameInput.value.trim();
@@ -329,7 +344,9 @@ els.fileInput.addEventListener("change", async () => {
   const file = els.fileInput.files[0];
   if (!file) return;
   try {
-    state = normalizeState(JSON.parse(await file.text()));
+    const nextState = normalizeState(JSON.parse(await file.text()));
+    if (!canWriteSharedState("import data")) return;
+    state = nextState;
     saveState(state);
     render();
   } catch {
@@ -340,6 +357,7 @@ els.fileInput.addEventListener("change", async () => {
 });
 
 els.copyStudentLink.addEventListener("click", async () => {
+  if (!canWriteSharedState("copy live student link")) return;
   const url = makeShareUrl(state);
   try {
     await navigator.clipboard.writeText(url);
@@ -350,6 +368,7 @@ els.copyStudentLink.addEventListener("click", async () => {
 });
 
 els.resetAll.addEventListener("click", () => {
+  if (!canWriteSharedState("reset data")) return;
   if (!confirm(`${currentGroup.label}의 모든 이름과 점수를 처음 상태로 되돌릴까요?`)) return;
   state = defaultState();
   saveState(state);

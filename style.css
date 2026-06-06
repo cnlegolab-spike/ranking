@@ -274,6 +274,11 @@ h1 {
   color: var(--danger);
 }
 
+.home-storage-status {
+  width: max-content;
+  margin-bottom: 14px;
+}
+
 .layout {
   width: 100%;
   max-width: 1480px;

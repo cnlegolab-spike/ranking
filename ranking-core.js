@@ -7,6 +7,7 @@ const REMOTE_PATH_PREFIX = "ranking-100";
 let remoteStateRef = null;
 let remoteConnectionRef = null;
 let remoteSaveTimer = null;
+let storageAlertShownAt = 0;
 let remoteStatus = {
   enabled: false,
   connected: false,
@@ -98,9 +99,15 @@ function saveLocalState(state) {
   }
 }
 
+function remoteStorageRequired() {
+  return window.RANKING_REQUIRE_REMOTE_STORAGE !== false;
+}
+
 function loadState() {
   const hashState = readStateFromHash();
   if (hashState) return hashState;
+
+  if (remoteStorageRequired() && !remoteStateRef) return defaultState();
 
   try {
     const groupKey = groupStorageKey();
@@ -146,12 +153,47 @@ function getRemoteStatus() {
   return { ...remoteStatus };
 }
 
+function storageProblemMessage(action = "save") {
+  const config = getFirebaseConfig();
+  if (!config) {
+    return `Cannot ${action}. firebase-config.js still has placeholder values. Add your real Firebase Realtime Database config and upload it to GitHub.`;
+  }
+  if (typeof firebase === "undefined" || !firebase.initializeApp || !firebase.database) {
+    return `Cannot ${action}. Firebase scripts did not load. Check the network connection and GitHub Pages console.`;
+  }
+  if (remoteStatus.error) return `Cannot ${action}. ${remoteStatus.error}`;
+  if (!remoteStateRef) return `Cannot ${action}. Shared cloud database is not initialized.`;
+  return "";
+}
+
+function notifyStorageProblem(action = "save") {
+  const message = storageProblemMessage(action);
+  if (!message) return;
+
+  const now = Date.now();
+  if (now - storageAlertShownAt > 4000) {
+    storageAlertShownAt = now;
+    alert(message);
+  }
+}
+
+function canWriteSharedState(action = "save", options = {}) {
+  if (!remoteStorageRequired()) return true;
+  if (remoteStateRef && !remoteStatus.error) return true;
+  if (!options.silent) notifyStorageProblem(action);
+  return false;
+}
+
 function initRemoteState() {
   if (remoteStateRef) return true;
 
   const config = getFirebaseConfig();
   if (!config || typeof firebase === "undefined" || !firebase.initializeApp || !firebase.database) {
-    setRemoteStatus({ enabled: false, connected: false, error: "" });
+    setRemoteStatus({
+      enabled: false,
+      connected: false,
+      error: remoteStorageRequired() ? storageProblemMessage() : ""
+    });
     return false;
   }
 
@@ -174,7 +216,7 @@ function initRemoteState() {
 }
 
 function writeRemoteState(state) {
-  if (!remoteStateRef) return Promise.resolve();
+  if (!canWriteSharedState("save")) return Promise.resolve(false);
 
   const payload = {
     state: normalizeState(state),
@@ -183,19 +225,28 @@ function writeRemoteState(state) {
   };
 
   return remoteStateRef.set(payload)
-    .then(() => setRemoteStatus({ enabled: true, error: "" }))
+    .then(() => {
+      saveLocalState(state);
+      setRemoteStatus({ enabled: true, error: "" });
+      return true;
+    })
     .catch((error) => {
       setRemoteStatus({ enabled: true, error: error.message || "Firebase save failed." });
+      notifyStorageProblem("save");
+      return false;
     });
 }
 
 function saveState(state, options = {}) {
   const normalized = normalizeState(state);
-  saveLocalState(normalized);
+
+  if (!canWriteSharedState("save")) return Promise.resolve(false);
+
+  if (!remoteStorageRequired()) saveLocalState(normalized);
 
   if (!remoteStateRef) return Promise.resolve(normalized);
   if (options.immediate) {
-    return writeRemoteState(normalized).then(() => normalized);
+    return writeRemoteState(normalized);
   }
 
   clearTimeout(remoteSaveTimer);
@@ -254,7 +305,7 @@ function makeShareUrl(state, pageName = "student.html") {
   url.searchParams.set("group", getCurrentGroup().id);
   url.hash = "";
 
-  if (!remoteStateRef) {
+  if (!remoteStateRef && !remoteStorageRequired()) {
     const json = JSON.stringify(normalizeState(state));
     const encoded = btoa(unescape(encodeURIComponent(json)));
     url.hash = `data=${encoded}`;

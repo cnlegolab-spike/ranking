@@ -36,11 +36,12 @@ function ensureStorageStatusElement() {
 
 function renderStorageStatus(status = getRemoteStatus()) {
   if (!els.storageStatus) return;
+  document.body.classList.toggle("storage-unavailable", remoteStorageRequired() && (!status.enabled || Boolean(status.error)));
   els.storageStatus.classList.toggle("is-connected", status.enabled && status.connected && !status.error);
   els.storageStatus.classList.toggle("is-error", Boolean(status.error));
 
   if (status.error) {
-    els.storageStatus.textContent = "Cloud error";
+    els.storageStatus.textContent = status.enabled ? "Cloud error" : "Cloud setup required";
     els.storageStatus.title = status.error;
     return;
   }
